@@ -33,6 +33,7 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraAccessException
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
+import java.io.File
 
 typealias LumaListener = (luma: Double) -> Unit
 
@@ -66,39 +67,45 @@ class MainActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
-private fun takePhoto() {
-    val imageCapture = imageCapture ?: return
+    private fun takePhoto() {
+        val imageCapture = imageCapture ?: return
 
-    //Create time stamped name and MediaStore entry
-    val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
-        .format(System.currentTimeMillis())
-    val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/CameraX")
+        // Create time stamped name
+        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
+            .format(System.currentTimeMillis())
+
+        // Try to use the SD Card as the save location
+        val externalMediaDirs = externalMediaDirs // This method returns paths to external storage volumes
+        val saveDirectory = if (externalMediaDirs.isNotEmpty() && externalMediaDirs.size > 1) {
+            // Typically, the first entry is the primary storage, and the second is the SD card if present
+            File(externalMediaDirs[1], "Pictures/CameraX")
+        } else {
+            // Fallback to internal storage if SD card is not available
+            File(externalMediaDirs[0], "Pictures/CameraX")
         }
-    }
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(
-        contentResolver,
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        contentValues).build()
 
-    //set up image capture listener, which is triggered after photo has been taken
-    imageCapture.takePicture(
-        outputOptions, ContextCompat.getMainExecutor(this),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onError(exc: ImageCaptureException) {
-                Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
+        // Make sure the directory exists
+        saveDirectory.mkdirs()
+
+        val file = File(saveDirectory, "$name.jpg")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
+
+        // Set up image capture listener, which is triggered after photo has been taken
+        imageCapture.takePicture(
+            outputOptions, ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onError(exc: ImageCaptureException) {
+                    Log.d(TAG, "Photo capture failed: ${exc.message}", exc)
+                }
+
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val msg = "Photo capture succeeded: ${output.savedUri}"
+                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                    Log.d(TAG, msg)
+                }
             }
-            override fun
-                    onImageSaved(output: ImageCapture.OutputFileResults){
-                val msg = "Photo capture succeeded: ${output.savedUri}"
-                Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
-                Log.d(TAG, msg)
-            }
-        })
-}
+        )
+    }
 
     private fun recordVideo() {
         val videoCapture = this.videoCapture ?: return
